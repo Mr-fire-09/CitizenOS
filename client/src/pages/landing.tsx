@@ -173,6 +173,7 @@ export default function Landing() {
       <footer className="border-t py-8">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
           <p>© 2024 Digital Governance Platform. All rights reserved.</p>
+          <p className="mt-2">Created by Neeraj Verma</p>
         </div>
       </footer>
     </div>
