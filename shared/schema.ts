@@ -67,6 +67,16 @@ export const blockchainHashes = pgTable("blockchain_hashes", {
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
+export const emailOtpRecords = pgTable("email_otp_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  otp: text("otp").notNull(),
+  purpose: text("purpose").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  verified: boolean("verified").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
@@ -140,4 +150,7 @@ export type VerifyOTP = z.infer<typeof verifyOtpSchema>;
 export type GenerateOTP = z.infer<typeof generateOtpSchema>;
 
 export type BlockchainHash = typeof blockchainHashes.$inferSelect;
+
+export type EmailOTPRecord = typeof emailOtpRecords.$inferSelect;
+
 export type Notification = typeof notifications.$inferSelect;

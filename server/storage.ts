@@ -7,6 +7,7 @@ import type {
   Feedback,
   InsertFeedback,
   OTPRecord,
+  EmailOTPRecord,
   BlockchainHash,
   Notification,
 } from "@shared/schema";
@@ -38,6 +39,10 @@ export interface IStorage {
   getOTP(phone: string, purpose: string): Promise<OTPRecord | undefined>;
   verifyOTP(id: string): Promise<void>;
 
+  createEmailOTP(email: string, otp: string, purpose: string, expiresAt: Date): Promise<EmailOTPRecord>;
+  getEmailOTP(email: string, purpose: string): Promise<EmailOTPRecord | undefined>;
+  verifyEmailOTP(id: string): Promise<void>;
+
   createBlockchainHash(applicationId: string, hash: string, blockNumber: number): Promise<BlockchainHash>;
   getBlockchainHash(applicationId: string): Promise<BlockchainHash | undefined>;
 
@@ -52,6 +57,7 @@ export class MemStorage implements IStorage {
   private applicationHistory: Map<string, ApplicationHistory[]>;
   private feedback: Map<string, Feedback>;
   private otpRecords: Map<string, OTPRecord>;
+  private emailOtpRecords: Map<string, EmailOTPRecord>;
   private blockchainHashes: Map<string, BlockchainHash>;
   private notifications: Map<string, Notification>;
 
@@ -61,6 +67,7 @@ export class MemStorage implements IStorage {
     this.applicationHistory = new Map();
     this.feedback = new Map();
     this.otpRecords = new Map();
+    this.emailOtpRecords = new Map();
     this.blockchainHashes = new Map();
     this.notifications = new Map();
   }
@@ -253,6 +260,35 @@ export class MemStorage implements IStorage {
     const otp = this.otpRecords.get(id);
     if (otp) {
       this.otpRecords.set(id, { ...otp, verified: true });
+    }
+  }
+
+  async createEmailOTP(email: string, otp: string, purpose: string, expiresAt: Date): Promise<EmailOTPRecord> {
+    const id = randomUUID();
+    const record: EmailOTPRecord = {
+      id,
+      email,
+      otp,
+      purpose,
+      expiresAt,
+      verified: false,
+      createdAt: new Date(),
+    };
+
+    this.emailOtpRecords.set(id, record);
+    return record;
+  }
+
+  async getEmailOTP(email: string, purpose: string): Promise<EmailOTPRecord | undefined> {
+    return Array.from(this.emailOtpRecords.values())
+      .filter(r => r.email === email && r.purpose === purpose && !r.verified)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  }
+
+  async verifyEmailOTP(id: string): Promise<void> {
+    const otp = this.emailOtpRecords.get(id);
+    if (otp) {
+      this.emailOtpRecords.set(id, { ...otp, verified: true });
     }
   }
 

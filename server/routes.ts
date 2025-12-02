@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { sendEmailOTP } from "./email-service";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { loginSchema, insertUserSchema, insertApplicationSchema, updateApplicationStatusSchema, insertFeedbackSchema, verifyOtpSchema, generateOtpSchema } from "@shared/schema";
@@ -122,11 +123,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Username already exists" });
       }
 
+      const otp = generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createEmailOTP(data.email, otp, "register", expiresAt);
+      await sendEmailOTP(data.email, otp, "register");
+
       const hashedPassword = await bcrypt.hash(data.password, 10);
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
       });
+
+      res.json({ message: "OTP sent to email. Please verify to complete registration.", email: data.email, userId: user.id });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/verify-email-otp", async (req: Request, res: Response) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        return res.status(400).json({ error: "Email and OTP required" });
+      }
+
+      const record = await storage.getEmailOTP(email, "register");
+      if (!record) {
+        return res.status(400).json({ error: "Invalid or expired OTP" });
+      }
+
+      if (record.expiresAt < new Date()) {
+        return res.status(400).json({ error: "OTP expired" });
+      }
+
+      if (record.otp !== otp) {
+        return res.status(400).json({ error: "Invalid OTP" });
+      }
+
+      await storage.verifyEmailOTP(record.id);
+      const user = await storage.getUserByUsername(email.split("@")[0]);
+      
+      if (!user) {
+        return res.status(400).json({ error: "User not found" });
+      }
 
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
@@ -135,7 +174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const { password, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword, token });
+      res.json({ user: userWithoutPassword, token, message: "Email verified successfully" });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -155,6 +194,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
+      const otp = generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createEmailOTP(user.email, otp, "login", expiresAt);
+      await sendEmailOTP(user.email, otp, "login");
+
+      res.json({ message: "OTP sent to email. Please verify to login.", email: user.email, userId: user.id });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/verify-login-otp", async (req: Request, res: Response) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        return res.status(400).json({ error: "Email and OTP required" });
+      }
+
+      const record = await storage.getEmailOTP(email, "login");
+      if (!record) {
+        return res.status(400).json({ error: "Invalid or expired OTP" });
+      }
+
+      if (record.expiresAt < new Date()) {
+        return res.status(400).json({ error: "OTP expired" });
+      }
+
+      if (record.otp !== otp) {
+        return res.status(400).json({ error: "Invalid OTP" });
+      }
+
+      await storage.verifyEmailOTP(record.id);
+      const user = await storage.getUserByUsername(email.split("@")[0]);
+      
+      if (!user) {
+        return res.status(400).json({ error: "User not found" });
+      }
+
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
         JWT_SECRET,
@@ -162,7 +239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const { password, ...userWithoutPassword } = user;
-      res.json({ user: userWithoutPassword, token });
+      res.json({ user: userWithoutPassword, token, message: "Login successful" });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
