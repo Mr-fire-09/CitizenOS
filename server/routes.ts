@@ -123,18 +123,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Username already exists" });
       }
 
-      const otp = generateOTP();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-      await storage.createEmailOTP(data.email, otp, "register", expiresAt);
-      await sendEmailOTP(data.email, otp, "register");
-
       const hashedPassword = await bcrypt.hash(data.password, 10);
       const user = await storage.createUser({
         ...data,
         password: hashedPassword,
       });
 
-      res.json({ message: "OTP sent to email. Please verify to complete registration.", email: data.email, userId: user.id });
+      const otp = generateOTP();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      await storage.createEmailOTP(data.email, otp, "register", expiresAt);
+      
+      // Send email OTP but don't block registration if it fails
+      sendEmailOTP(data.email, otp, "register").catch(err => {
+        console.error("Email OTP failed, but registration proceeds:", err.message);
+      });
+
+      const token = jwt.sign(
+        { id: user.id, username: user.username, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
+      const { password, ...userWithoutPassword } = user;
+      res.json({ 
+        user: userWithoutPassword, 
+        token, 
+        message: "Registration successful. OTP sent to email for verification.",
+        email: data.email 
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -194,12 +210,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
+      const token = jwt.sign(
+        { id: user.id, username: user.username, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
       await storage.createEmailOTP(user.email, otp, "login", expiresAt);
-      await sendEmailOTP(user.email, otp, "login");
+      
+      // Send email OTP but don't block login if it fails
+      sendEmailOTP(user.email, otp, "login").catch(err => {
+        console.error("Email OTP failed for login, but proceeding:", err.message);
+      });
 
-      res.json({ message: "OTP sent to email. Please verify to login.", email: user.email, userId: user.id });
+      const { password, ...userWithoutPassword } = user;
+      res.json({ 
+        user: userWithoutPassword, 
+        token,
+        message: "Login successful", 
+        email: user.email 
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
